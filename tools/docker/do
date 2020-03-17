@@ -1,0 +1,62 @@
+#!/bin/bash
+
+IMAGE="nrfdev_sdk"
+CONTAINER="nrfdev_sdk-container"
+RCFILE="rcfile.docker"
+# Current folder is mapped into /root/(currentfoldername) in container
+
+
+if [[ "$1" == "up" ]]; then
+#if image doesnt exist, build it then run it
+  if [[ "$(docker images -q $IMAGE 2> /dev/null)" == "" ]]; then
+    docker build . -t $IMAGE
+  fi
+  exit 0
+fi
+
+if [ -z $PROJECT_DIR ]; then
+  echo "error PROJECT_DIR not configured!"
+  exit 1
+fi
+
+echo "SDK in: $PROJECT_DIR"
+
+if [ -z $SDK_DIR ]; then
+  echo "error SDK_DIR not configured!"
+  exit 1
+fi
+
+echo "SDK in: $SDK_DIR"
+
+
+VIRTUAL_DIR="/root/${PROJECT_DIR##*/}"
+
+if [[ "$1" == "bash" ]]; then
+  docker run -it --name $CONTAINER \
+    --rm --privileged \
+    -v /dev/bus/usb:/dev/bus/usb \
+    -v $PROJECT_DIR:$VIRTUAL_DIR \
+    -v $SDK_DIR:/root/sdk \
+    -w /root \
+    --env PROJECT_DIR=$VIRTUAL_DIR \
+    --env SDK_DIR=/root/sdk \
+    $IMAGE /bin/bash --rcfile $RCFILE
+
+#This only works runs inside the container
+elif [[ "$1" == "_dockerbuild" ]]; then
+  source $RCFILE
+  ./build.sh "${@:2}"
+
+else
+  docker run -td --name $CONTAINER \
+    --rm --privileged \
+    -v /dev/bus/usb:/dev/bus/usb \
+    -v $PROJECT_DIR:$VIRTUAL_DIR \
+    -v $SDK_DIR:/root/sdk \
+    --env PROJECT_DIR=$VIRTUAL_DIR \
+    --env SDK_DIR=/root/sdk \
+    -w $VIRTUAL_DIR \
+    $IMAGE
+  docker exec $CONTAINER ./do _dockerbuild "${@:1}"
+  docker stop $CONTAINER
+fi
